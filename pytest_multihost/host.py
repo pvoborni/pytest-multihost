@@ -30,8 +30,10 @@ class BaseHost(object):
 
     def __init__(self, domain, hostname, role, ip=None,
                  external_hostname=None, username=None, password=None,
-                 test_dir=None, host_type=None, transport_name=None):
+                 test_dir=None, host_type=None, transport_name=None,
+                 host_id=None):
         self.host_type = host_type
+        self.host_id = host_id
         self.domain = domain
         self.role = str(role)
         if username is None:
@@ -134,6 +136,7 @@ class BaseHost(object):
         username = dct.pop('username', None)
         password = dct.pop('password', None)
         host_type = dct.pop('host_type', 'default')
+        host_id = dct.pop('host_id', None)
         transport_name = dct.pop('tranport', None)
 
         check_config_dict_empty(dct, 'host %s' % hostname)
@@ -144,6 +147,7 @@ class BaseHost(object):
                    username=username,
                    password=password,
                    host_type=host_type,
+                   host_id=host_id,
                    transport_name=transport_name)
 
     def to_dict(self):

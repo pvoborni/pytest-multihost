@@ -20,6 +20,8 @@ import errno
 import logging
 import io
 import sys
+import shutil
+import tempfile
 
 from pytest_multihost import util
 
@@ -562,6 +564,124 @@ class SSHCommand(Command):
         self.running_threads.add(thread)
         thread.start()
         return thread
+
+
+class ContainerTransport(OpenSSHTransport):
+    """Base class for transports like Podman or Docker"""
+    def __init__(self, host):
+        super(OpenSSHTransport, self).__init__(host)
+        self.container_id = host.host_id
+        self.exec_argv = self._get_exec_argv()
+
+    def _get_exec_argv(self):
+        argv = [self.container_cmd, 'exec', '-i']
+
+        # if self.username is not None:
+        #     argv.extend(['-u', self.username])
+        argv.append(self.container_id)
+
+        self.log.debug('SSH invocation: %s', argv)
+        return argv
+
+    def _run_core(self, core_argv, command, log_stdout=True, argv=None,
+                  collect_output=True, encoding='utf-8'):
+        if argv is None:
+            argv = command
+        logger_name = self.get_next_command_logger_name()
+        ssh = SSHCallWrapper(core_argv + list(command))
+        return SSHCommand(ssh, argv, logger_name, log_stdout=log_stdout,
+                          collect_output=collect_output,
+                          get_logger=self.host.config.get_logger,
+                          encoding=encoding)
+
+    def _run(self, command, log_stdout=True, argv=None, collect_output=True,
+             encoding='utf-8'):
+        """Run the given command on the remote host
+
+        :param command: Command to run (appended to the common SSH invocation)
+        :param log_stdout: If false, stdout will not be logged
+        :param argv: Command to log (if different from ``command``
+        :param collect_output: If false, no output will be collected
+        """
+        return self._run_core(
+            self.exec_argv, command, log_stdout=log_stdout, argv=argv,
+            collect_output=collect_output, encoding=encoding
+        )
+
+    # def start_shell(self, argv, log_stdout=True, encoding='utf-8'):
+    #     self.log.info('RUN %s', argv)
+    #     command = self._run(['bash'], argv=argv, log_stdout=log_stdout,
+    #                         encoding=encoding)
+    #     return command
+
+    def get_file(self, remotepath, localpath):
+        """Copy a file from the remote host to a local file"""
+        argv = [
+            self.container_cmd,
+            'cp'
+            '%s:%s' % (self.container_id, remotepath),
+            localpath
+        ]
+        self._run_core(argv, [])
+
+    def put_file(self, localpath, remotepath):
+        """Copy a local file to the remote host"""
+        argv = [
+            self.container_cmd,
+            'cp',
+            localpath,
+            '%s:%s' % (self.container_id, remotepath),
+        ]
+        self._run_core(argv, [])
+
+    def get_file_contents(self, filename, encoding=None):
+        """Read the named remote file and return the contents as a string"""
+        self.log.debug('READ %s', filename)
+
+        tempdir = tempfile.mkdtemp()
+        temp_path = os.path.join(tempdir, os.path.basename(filename))
+
+        self.get_file(filename, temp_path)
+
+        with open(temp_path, 'rb') as f:
+            result = f.read()
+        if encoding:
+            result = result.decode(encoding)
+
+        shutil.rmtree(tempdir)
+
+        return result
+
+    def put_file_contents(self, filename, contents, encoding=None):
+        """Write the given string to the named remote file"""
+        self.log.info('WRITE %s', filename)
+        if encoding and not isinstance(contents, bytes):
+            contents = contents.encode(encoding)
+
+        tempdir = tempfile.mkdtemp()
+        temp_path = os.path.join(tempdir, os.path.basename(filename))
+
+        with open(temp_path, 'wb') as f:
+            f.write(contents)
+
+        self.put_file(temp_path, filename)
+
+        shutil.rmtree(tempdir)
+
+
+class PodmanTransport(ContainerTransport):
+    """Transport for that communicates with Podman containers"""
+    def __init__(self, host):
+        self.container_cmd = "podman"
+        super(PodmanTransport, self).__init__(host)
+
+
+class DockerTransport(ContainerTransport):
+    """Transport for that communicates with Docker containers"""
+    def __init__(self, host):
+        self.container_cmd = "docker"
+        super(DockerTransport, self).__init__(host)
+
 
 def get_transport_class(name):
     if name == 'paramiko':
