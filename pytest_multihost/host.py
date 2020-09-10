@@ -10,7 +10,9 @@ import os
 import socket
 import subprocess
 
-from pytest_multihost import transport
+from pytest_multihost.transport import (
+    default_transport_class, get_transport_class
+)
 from pytest_multihost.util import check_config_dict_empty, shell_quote
 
 try:
@@ -24,12 +26,11 @@ class BaseHost(object):
 
     See README for an overview of the core classes.
     """
-    transport_class = transport.SSHTransport
     command_prelude = b''
 
     def __init__(self, domain, hostname, role, ip=None,
                  external_hostname=None, username=None, password=None,
-                 test_dir=None, host_type=None):
+                 test_dir=None, host_type=None, transport_name=None):
         self.host_type = host_type
         self.domain = domain
         self.role = str(role)
@@ -47,6 +48,13 @@ class BaseHost(object):
             self.test_dir = domain.config.test_dir
         else:
             self.test_dir = test_dir
+
+        if transport_name:
+            self.transport_class = get_transport_class(transport_name)
+        elif domain.config.transport_name:
+            self.transport_class = get_transport_class(domain.config.transport_name)
+        else:
+            self.transport_class = default_transport_class()
 
         shortname, dot, ext_domain = hostname.partition('.')
         self.shortname = shortname
@@ -126,6 +134,7 @@ class BaseHost(object):
         username = dct.pop('username', None)
         password = dct.pop('password', None)
         host_type = dct.pop('host_type', 'default')
+        transport_name = dct.pop('tranport', None)
 
         check_config_dict_empty(dct, 'host %s' % hostname)
 
@@ -134,7 +143,8 @@ class BaseHost(object):
                    external_hostname=external_hostname,
                    username=username,
                    password=password,
-                   host_type=host_type)
+                   host_type=host_type,
+                   transport_name=transport_name)
 
     def to_dict(self):
         """Export info about this Host to a dict"""

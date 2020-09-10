@@ -563,11 +563,32 @@ class SSHCommand(Command):
         thread.start()
         return thread
 
+def get_transport_class(name):
+    if name == 'paramiko':
+        if not have_paramiko:
+            raise RuntimeError('Paramiko transport not available')
+        return ParamikoTransport
+    elif name == 'openssh':
+        return OpenSSHTransport
+    elif name == 'podman':
+        return PodmanTransport
+    elif name == 'docker':
+        return DockerTransport
+    else:
+        raise RuntimeError('Invalid transport name: %s' % name)
 
-if (
-    not have_paramiko or
-    os.environ.get('PYTESTMULTIHOST_SSH_TRANSPORT') == 'openssh'
-):
-    SSHTransport = OpenSSHTransport
-else:
-    SSHTransport = ParamikoTransport
+
+def default_transport_class():
+    if have_paramiko:
+        transport = ParamikoTransport
+    else:
+        transport = OpenSSHTransport
+
+    transport_name = os.environ.get('PYTESTMULTIHOST_SSH_TRANSPORT')
+    if transport_name:
+        transport = get_transport_class(transport_name)
+
+    return transport
+
+
+SSHTransport = default_transport_class()

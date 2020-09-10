@@ -23,6 +23,7 @@ init_args = [
     'ssh_username',
     'domains',
     'ipv6',
+    'transport',
 ]
 
 
@@ -46,6 +47,7 @@ class Config(object):
         self.ssh_username = kwargs.get('ssh_username', 'root')
         self.ipv6 = bool(kwargs.get('ipv6', False))
         self.windows_test_dir = kwargs.get('windows_test_dir', '/home/Administrator')
+        self.transport_name = kwargs.get('transport')
 
         if not self.ssh_password and not self.ssh_key_filename:
             self.ssh_key_filename = '~/.ssh/id_rsa'
